@@ -1,0 +1,165 @@
+// 프론트엔드 JavaScript에서 백엔드 연결 부분 개선
+
+// 백엔드 API 호출 함수 개선
+async function callBackendAPI(action, params = {}) {
+    const url = new URL(https://script.google.com/macros/s/AKfycbyZcW6i5fMjc1axw_Fg9GUwsN3Pt8YhYsrPpxhEf29El-5uER3M-QzU7A8SXSxuW1s7/exec);
+    url.searchParams.append('action', action);
+    
+    // 파라미터 추가
+    Object.keys(params).forEach(key => {
+        if (params[key] !== null && params[key] !== undefined) {
+            url.searchParams.append(key, params[key]);
+        }
+    });
+
+    console.log('API 호출:', url.toString());
+
+    try {
+        const response = await fetch(url.toString(), {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            mode: 'cors', // CORS 명시적 설정
+        });
+
+        console.log('Response status:', response.status);
+        console.log('Response headers:', response.headers);
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const result = await response.json();
+        console.log('API 응답:', result);
+
+        if (!result.success) {
+            throw new Error(result.message || 'API 요청 실패');
+        }
+
+        return result.data;
+    } catch (error) {
+        console.error('API 호출 오류:', error);
+        
+        // 구체적인 오류 메시지 제공
+        if (error.message.includes('CORS')) {
+            throw new Error('CORS 오류: 백엔드 서버 설정을 확인해주세요.');
+        } else if (error.message.includes('Failed to fetch')) {
+            throw new Error('네트워크 오류: 인터넷 연결을 확인해주세요.');
+        } else {
+            throw error;
+        }
+    }
+}
+
+// 초기화 함수 개선
+document.addEventListener('DOMContentLoaded', async () => {
+    showLoading(true, "초기화 중입니다...");
+    
+    try {
+        // 백엔드 연결 테스트
+        console.log('백엔드 URL:', BACKEND_URL);
+        const data = await callBackendAPI('getWebData');
+        
+        // Kakao Maps SDK 로드
+        const script = document.createElement('script');
+        script.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${data.appKey}&libraries=services,clusterer,drawing&autoload=false`;
+        script.onload = () => {
+            kakao.maps.load(() => setupApp(data));
+        };
+        script.onerror = () => {
+            throw new Error('Kakao Maps SDK 로드 실패');
+        };
+        document.head.appendChild(script);
+        
+    } catch (error) {
+        console.error('초기화 오류:', error);
+        showError(error);
+        showLoading(false);
+    }
+
+    bindEventListeners();
+});
+
+// 각 API 호출 함수들을 callBackendAPI 사용하도록 수정
+function displayRoute(destLat, destLng) {
+    showLoading(true, "경로를 계산 중입니다...");
+    
+    const startPos = startMarker.getPosition();
+    const params = {
+        originLat: startPos.getLat(),
+        originLng: startPos.getLng(),
+        destLat: destLat,
+        destLng: destLng
+    };
+
+    callBackendAPI('getRoute', params)
+        .then(routeData => {
+            if (currentPolyline) currentPolyline.setMap(null);
+            
+            if (routeData && routeData.polyline) {
+                const linePath = [];
+                for(let i = 0; i < routeData.polyline.length; i += 2) {
+                    linePath.push(new kakao.maps.LatLng(routeData.polyline[i+1], routeData.polyline[i]));
+                }
+                
+                currentPolyline = new kakao.maps.Polyline({
+                    path: linePath,
+                    strokeWeight: 5,
+                    strokeColor: "#4a90e2",
+                    strokeOpacity: 0.8,
+                    strokeStyle: "solid"
+                });
+                currentPolyline.setMap(map);
+                
+                const bounds = new kakao.maps.LatLngBounds();
+                bounds.extend(startPos);
+                bounds.extend(new kakao.maps.LatLng(destLat, destLng));
+                map.setBounds(bounds);
+                
+                alert(`실시간 경로 계산 완료!\n총 거리: ${(routeData.distance / 1000).toFixed(2)} km`);
+            } else {
+                alert('경로 정보를 가져오는 데 실패했습니다.');
+            }
+            showLoading(false);
+        })
+        .catch(error => {
+            console.error('경로 계산 오류:', error);
+            showError(error);
+        });
+}
+
+function updateStartAddress() {
+    const newAddress = document.getElementById('start-address').value;
+    if (!newAddress) return;
+    
+    showLoading(true, "새 출발지를 설정합니다...");
+    
+    callBackendAPI('geocodeAddress', { address: newAddress })
+        .then(newCoords => {
+            if (newCoords) {
+                const newLatLng = new kakao.maps.LatLng(newCoords.lat, newCoords.lng);
+                map.setCenter(newLatLng);
+                startMarker.setPosition(newLatLng);
+                
+                // 거리 재계산
+                allDestinations.forEach(dest => {
+                    const poly = new kakao.maps.Polyline({
+                        path: [newLatLng, new kakao.maps.LatLng(dest.lat, dest.lng)]
+                    });
+                    dest.distance = Math.round(poly.getLength() / 10) / 100;
+                });
+                
+                if (currentPolyline) currentPolyline.setMap(null);
+                applyFilters();
+                alert('출발지가 성공적으로 변경되었습니다.');
+            } else {
+                alert('주소를 좌표로 변환할 수 없습니다.');
+            }
+            showLoading(false);
+        })
+        .catch(error => {
+            console.error('주소 변환 오류:', error);
+            showError(error);
+        });
+}
