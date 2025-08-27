@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>인터랙티브 거리 계산 지도</title>
+    <style>
+        :root { --bg-color: #1a1a1a; --sidebar-bg: #2c2c2c; --control-bg: #1e1e1e; --text-color: #e0e0e0; --text-secondary: #a0a0a0; --primary-color: #4a90e2; --primary-hover: #63a4ff; --border-color: #444; }
+        html, body { width: 100%; height: 100%; margin: 0; padding: 0; font-family: 'Malgun Gothic', '맑은 고딕', sans-serif; background-color: var(--bg-color); color: var(--text-color); display: flex; overflow: hidden; }
+        #sidebar { width: 380px; height: 100%; background-color: var(--sidebar-bg); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; box-shadow: 2px 0 5px rgba(0,0,0,0.3); z-index: 10; }
+        #control-panel { padding: 20px; background-color: var(--control-bg); border-bottom: 1px solid var(--border-color); }
+        .app-title { margin-top: 0; color: var(--primary-color); }
+        .control-group { margin-bottom: 1.2rem; }
+        label { display: block; font-size: 14px; font-weight: bold; margin-bottom: 8px; color: var(--text-secondary); }
+        input[type="range"] { width: 100%; }
+        input[type="number"], input[type="text"], select { width: 100%; box-sizing: border-box; padding: 10px; background-color: var(--sidebar-bg); color: var(--text-color); border: 1px solid var(--border-color); border-radius: 4px; }
+        .input-with-button { display: flex; }
+        button { padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; transition: all 0.2s ease; }
+        .btn-primary { background-color: var(--primary-color); color: white; }
+        .btn-primary:hover { background-color: var(--primary-hover); }
+        .btn-primary:disabled { background-color: #555; cursor: not-allowed; }
+        .btn-secondary { background-color: #555; color: white; }
+        .btn-secondary:hover { background-color: #777; }
+        .button-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .switch { position: relative; display: inline-block; width: 50px; height: 28px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #555; transition: .4s; }
+        .slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 4px; bottom: 4px; background-color: white; transition: .4s; }
+        input:checked + .slider { background-color: var(--primary-color); }
+        input:checked + .slider:before { transform: translateX(22px); }
+        .slider.round { border-radius: 34px; }
+        .slider.round:before { border-radius: 50%; }
+        .switch-label { vertical-align: super; margin-left: 10px; font-weight: bold; color: var(--text-color); }
+        #result-panel { flex-grow: 1; overflow-y: auto; }
+        .result-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 20px; background-color: var(--control-bg); position: sticky; top: 0; z-index: 5; }
+        #result-count { margin: 0; font-size: 16px; }
+        #result-list { list-style: none; padding: 0; margin: 0; }
+        #result-list li { padding: 15px 20px; border-bottom: 1px solid var(--border-color); cursor: pointer; transition: background-color 0.2s; }
+        #result-list li:hover { background-color: #3a3a3a; }
+        #result-list li > div { display: flex; justify-content: space-between; align-items: center; }
+        #result-list strong { font-size: 15px; }
+        #result-list span { font-size: 13px; color: var(--text-secondary); }
+        #map { width: 100%; height: 100%; }
+        .infowindow { color: #333; padding: 5px; font-size: 13px; line-height: 1.6; }
+        .infowindow strong { color: #000; font-size: 14px; }
+        .infowindow a { color: var(--primary-color); text-decoration: none; font-weight: bold; }
+        #loading-overlay, #modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 1000; }
+        .spinner { border: 8px solid #f3f3f3; border-top: 8px solid var(--primary-color); border-radius: 50%; width: 60px; height: 60px; animation: spin 1.5s linear infinite; margin-bottom: 20px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        #modal-content { background-color: var(--sidebar-bg); padding: 30px; border-radius: 8px; width: 90%; max-width: 800px; max-height: 90vh; box-shadow: 0 5px 20px rgba(0,0,0,0.5); overflow-y: auto; position: relative; }
+        #modal-close-btn { position: absolute; top: 15px; right: 20px; font-size: 2rem; color: var(--text-secondary); background: none; border: none; cursor: pointer; }
+        #modal-body h1 { color: var(--primary-color); margin-top: 0; }
+        .summary-table, .details-table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        .summary-table th, .details-table th { background-color: #3e3e3e; padding: 12px; text-align: left; }
+        .summary-table td, .details-table td { padding: 12px; border-bottom: 1px solid var(--border-color); }
+        .details-row > td { padding: 20px; background-color: var(--control-bg); }
+        .details-container h3, .details-container h4 { color: var(--primary-color); border-bottom: 1px solid var(--border-color); padding-bottom: 5px; margin-top: 20px; }
+        .formula { font-family: monospace; background-color: var(--bg-color); padding: 15px; border-radius: 4px; word-break: break-all; }
+        @media (max-width: 768px) { body { flex-direction: column; } #sidebar { width: 100%; height: 45%; max-height: 45vh; border-right: none; border-bottom: 1px solid var(--border-color); } #map { height: 55%; } }
+    </style>
+</head>
+<body>
+    <div id="loading-overlay" style="display:none;"><div class="spinner"></div><p></p></div>
+    <div id="sidebar"><div id="control-panel">
+            <h2 class="app-title">거리 계산 도우미</h2>
+            <div class="control-group"><label class="switch"><input type="checkbox" id="sim-mode-checkbox"><span class="slider round"></span></label><label for="sim-mode-checkbox" class="switch-label">물량 배분 시뮬레이션</label></div>
+            <div class="control-group"><label for="company-select">업체 선택</label><select id="company-select"><option value="all">전체</option></select></div>
+            <div id="filter-controls">
+                <div class="control-group"><label for="distance-slider">거리 필터 (km): <span id="distance-value">50</span> km</label><input type="range" id="distance-slider" min="0" max="100" value="50"></div>
+                <div class="control-group"><label for="capacity-input">최소 보관허용량</label><input type="number" id="capacity-input" min="0" placeholder="0" value="0"></div>
+                <button id="apply-filter-btn" class="btn-primary">조건으로 조회</button>
+            </div>
+            <div id="simulation-controls" style="display: none;">
+                <div class="control-group"><label for="volume-input">총 반출토량</label><input type="number" id="volume-input" min="0" placeholder="예: 10000"></div>
+                <div class="button-group"><button id="run-simulation-btn" class="btn-primary">시뮬레이션 실행</button><button id="run-all-compare-btn" class="btn-secondary">전체 업체 비교</button></div>
+            </div>
+            <hr style="border-color: var(--border-color); border-style: solid; margin: 20px 0;">
+            <div class="control-group"><label for="start-address">출발지 주소 (임시 변경)</label><div class="input-with-button"><input type="text" id="start-address" placeholder="새 출발지 주소 입력"><button id="update-start-btn">변경</button></div></div>
+        </div>
+        <div id="result-panel">
+            <div class="result-header"><h3 id="result-count">결과: 0개</h3><select id="sort-select"><option value="distance">거리순</option><option value="capacity_desc">용량 높은순</option></select></div>
+            <ul id="result-list"></ul>
+        </div>
+    </div>
+    <div id="map"></div>
+    <div id="modal-overlay" style="display: none;"><div id="modal-content"><button id="modal-close-btn">&times;</button><div id="modal-body"></div></div></div>
+
+    <script>
+    // 전역 변수
+    let map, startMarker, clusterer;
+    let allDestinations = [], destinationMarkers = [];
+    let currentPolyline = null;
+    let companyList = new Set();
+    
+    // !!! 가장 중요한 부분 !!!
+    // 2단계에서 복사한 앱스크립트 URL을 여기에 붙여넣으세요.
+    const BACKEND_URL = '여기에_2단계에서_복사한_앱스크립트_URL을_붙여넣으세요';
+
+    // 초기화
+    document.addEventListener('DOMContentLoaded', () => {
+        showLoading(true, "초기화 중입니다...");
+        
+        fetch(`${BACKEND_URL}?action=getWebData`)
+            .then(res => res.json())
+            .then(result => {
+                if (result.success) {
+                    const data = result.data;
+                    const script = document.createElement('script');
+                    script.src = `//dapi.kakao.com/v2/maps/sdk.js?appkey=${data.appKey}&libraries=services,clusterer,drawing&autoload=false`;
+                    script.onload = () => {
+                        kakao.maps.load(() => setupApp(data));
+                    };
+                    document.head.appendChild(script);
+                } else {
+                    showError({ message: result.message });
+                }
+            })
+            .catch(err => showError({ message: '백엔드 서버에 연결할 수 없습니다.' }));
+
+        bindEventListeners();
+    });
+
+    // 이하 모든 JavaScript 함수는 이전 카카오맵 버전의 코드를 그대로 사용합니다.
+    function setupApp(data){allDestinations=data.destinations.map(e=> {let t=new kakao.maps.LatLng(data.startCoords.lat,data.startCoords.lng),a=new kakao.maps.LatLng(e.lat,e.lng);return e.distance=Math.round(new kakao.maps.Polyline({path:[t,a]}).getLength()/10)/100,companyList.add(e.company),e});let e=document.getElementById("map"),t={center:new kakao.maps.LatLng(data.startCoords.lat,data.startCoords.lng),level:8};map=new kakao.maps.Map(e,t);let a=new kakao.maps.MapTypeControl;map.addControl(a,kakao.maps.ControlPosition.TOPRIGHT);let o=new kakao.maps.ZoomControl;map.addControl(o,kakao.maps.ControlPosition.RIGHT);let n="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",r=kakao.maps.MapTypeId.NORMAL;kakao.maps.Tileset.add("DARK",n,"",!1,0,19),map.addOverlayMapTypeId(r),clusterer=new kakao.maps.MarkerClusterer({map:map,averageCenter:!0,minLevel:7}),startMarker=new kakao.maps.Marker({position:new kakao.maps.LatLng(data.startCoords.lat,data.startCoords.lng),image:new kakao.maps.MarkerImage("//t1.daumcdn.net/localimg/localimages/07/mapapidoc/marker_red.png",new kakao.maps.Size(64,69),{offset:new kakao.maps.Point(27,69)})}),startMarker.setMap(map),document.getElementById("start-address").value=data.startAddress,populateCompanySelect(),createDestinationMarkers(),applyFilters(),showLoading(!1)}function bindEventListeners(){document.getElementById("sim-mode-checkbox").addEventListener("change",toggleMode),document.getElementById("apply-filter-btn").addEventListener("click",applyFilters),document.getElementById("run-simulation-btn").addEventListener("click",()=>runSimulation(!1)),document.getElementById("run-all-compare-btn").addEventListener("click",()=>runSimulation(!0));let e=["company-select","distance-slider","capacity-input","sort-select"];e.forEach(e=>{document.getElementById(e).addEventListener("input",applyFilters)}),document.getElementById("update-start-btn").addEventListener("click",updateStartAddress),document.getElementById("modal-close-btn").addEventListener("click",()=>{document.getElementById("modal-overlay").style.display="none"})}function toggleMode(){let e=document.getElementById("sim-mode-checkbox").checked;document.getElementById("filter-controls").style.display=e?"none":"block",document.getElementById("simulation-controls").style.display=e?"block":"none";let t=document.getElementById("company-select"),a=document.getElementById("run-simulation-btn");e&&"all"===t.value?a.disabled=!0:a.disabled=!1}function populateCompanySelect(){let e=document.getElementById("company-select");companyList.forEach(t=>{let a=document.createElement("option");a.value=t,a.textContent=t,e.appendChild(a)}),e.addEventListener("change",()=>{let t=document.getElementById("sim-mode-checkbox").checked;"all"===e.value&&t?document.getElementById("run-simulation-btn").disabled=!0:document.getElementById("run-simulation-btn").disabled=!1})}function createDestinationMarkers(){let e="https://t1.daumcdn.net/localimg/localimages/07/mapapidoc/marker_number_blue.png",t=new kakao.maps.Size(36,37);destinationMarkers=allDestinations.map((a,o)=>{let n=new kakao.maps.LatLng(a.lat,a.lng),r=new kakao.maps.MarkerImage(e,t,{spriteSize:new kakao.maps.Size(36,691),spriteOrigin:new kakao.maps.Point(0,o%15*46+10),offset:new kakao.maps.Point(13,37)}),s=new kakao.maps.Marker({position:n,image:r}),i=new kakao.maps.InfoWindow({content:`<div class="infowindow"><strong>${a.name}</strong> (${a.company})<br>용량: ${a.capacity.toLocaleString()}<br>직선거리: ${a.distance} km<br><a href="#" onclick="displayRoute(${a.lat}, ${a.lng}); return false;">실시간 경로 보기</a></div>`,removable:!0});return kakao.maps.event.addListener(s,"click",()=>{destinationMarkers.forEach(e=>e.infowow.close()),i.open(map,s)}),{marker:s,infowow:i,data:a}})}function applyFilters(){let e=document.getElementById("company-select").value,t=parseInt(document.getElementById("distance-slider").value);document.getElementById("distance-value").textContent=t;let a=parseInt(document.getElementById("capacity-input").value)||0,o=document.getElementById("sort-select").value,n=allDestinations.filter(t=>("all"===e||t.company===e)&&t.distance<=distance&&t.capacity>=a);n.sort((e,t)=>"distance"===o?e.distance-t.distance:t.capacity-e.capacity),updateMapAndList(n)}function updateMapAndList(e){clusterer.clear();let t=[],a=new Map(destinationMarkers.map(e=>[e.data.address,e.marker]));e.forEach(e=>{let o=a.get(e.address);o&&t.push(o)}),clusterer.addMarkers(t),updateResultList(e)}function updateResultList(e){let t=document.getElementById("result-list");t.innerHTML="",document.getElementById("result-count").textContent=`결과: ${e.length}개`,e.forEach(e=>{let a=document.createElement("li");a.innerHTML=`<div><strong>${e.name}</strong><span>${e.company}</span></div><div><span>${e.distance} km</span><span>${e.capacity.toLocaleString()}</span></div>`,a.addEventListener("click",()=>{let t=new kakao.maps.LatLng(e.lat,e.lng);map.setLevel(4,{anchor:t});let o=destinationMarkers.find(t=>t.data.address===e.address);o&&(destinationMarkers.forEach(e=>e.infowow.close()),o.infowow.open(map,o.marker))}),t.appendChild(a)})}function runSimulation(e){let t=parseInt(document.getElementById("volume-input").value);if(!t||t<=0)return void alert("총 반출토량을 입력해주세요.");let a=e?Array.from(companyList):[document.getElementById("company-select").value],o=[];a.forEach(e=>{let a=allDestinations.filter(t=>t.company===e).sort((e,t)=>e.distance-t.distance),n=t,r=0,s=0,i=[];for(let t of a){if(n<=0)break;let e=Math.min(n,t.capacity);i.push({...t,allocated:e}),r+=t.distance*e,n-=e,s+=e}let d=s>0?(r/s).toFixed(2):0;o.push({company:e,weightedAvgDistance:d,allocatedVolumeTotal:s,totalVolume:t,allocationDetails:i})}),displayResultsModal(o,e)}function displayResultsModal(e,t){let a=document.getElementById("modal-body"),o=`<h1>${t?"전체 업체 비교 결과":`'${e[0].company}' 시뮬레이션 결과`}</h1>`;if(t){o+='<table class="summary-table"><thead><tr><th>업체명</th><th>가중 평균 거리</th><th>처리 가능 물량</th><th>상세보기</th></tr></thead><tbody>',e.forEach((t,a)=>{let n=t.allocatedVolumeTotal<t.totalVolume;o+=`<tr><td>${t.company}</td><td><strong>${t.weightedAvgDistance} km</strong></td><td ${n?'style="color: #ff6b6b;"':""}>${t.allocatedVolumeTotal.toLocaleString()} / ${t.totalVolume.toLocaleString()}</td><td><button class="details-toggle" data-index="${a}">▼</button></td></tr><tr class="details-row" id="details-${a}" style="display:none;"><td colspan="4">${generateDetailsHtml(t)}</td></tr>`}),o+="</tbody></table>"}else o+=generateDetailsHtml(e[0]);a.innerHTML=o,document.getElementById("modal-overlay").style.display="flex",document.querySelectorAll(".details-toggle").forEach(e=>{e.addEventListener("click",t=>{let a=t.target.dataset.index,o=document.getElementById(`details-${a}`),n="none"!==o.style.display;o.style.display=n?"none":"table-row",t.target.textContent=n?"▼":"▲"})})}function generateDetailsHtml(e){let t=`<div class="details-container"><div class="details-summary"><h3>${e.company}</h3><p>가중 평균 거리: <span>${e.weightedAvgDistance} km</span></p></div><h4>세부 배분 내역</h4><table class="details-table"><thead><tr><th>반입장명</th><th>거리</th><th>용량</th><th>배분량</th></tr></thead><tbody>`;return e.allocationDetails.forEach(e=>{t+=`<tr><td>${e.name}</td><td>${e.distance} km</td><td>${e.capacity.toLocaleString()}</td><td>${e.allocated.toLocaleString()}</td></tr>`}),t+=`</tbody></table><h4>계산식</h4><p class="formula">`,t+=`( ${e.allocationDetails.map(e=>`(${e.distance}km × ${e.allocated.toLocaleString()})`).join(" + ")} ) / ${e.allocatedVolumeTotal.toLocaleString()} = <strong>${e.weightedAvgDistance} km</strong></p></div>`}function displayRoute(e,t){showLoading(!0,"경로를 계산 중입니다...");let a=startMarker.getPosition(),o=new URLSearchParams({action:"getRoute",originLat:a.getLat(),originLng:a.getLng(),destLat:e,destLng:t});fetch(`${BACKEND_URL}?${o.toString()}`).then(e=>e.json()).then(o=>{if(o.success&&o.data){if(currentPolyline&&currentPolyline.setMap(null),o.data.polyline){let e=[],a=o.data.polyline;for(let t=0;t<a.length;t+=2)e.push(new kakao.maps.LatLng(a[t+1],a[t]));currentPolyline=new kakao.maps.Polyline({path:e,strokeWeight:5,strokeColor:"#4a90e2",strokeOpacity:.8,strokeStyle:"solid"}),currentPolyline.setMap(map);let n=new kakao.maps.LatLngBounds;n.extend(a),n.extend(new kakao.maps.LatLng(t,e)),map.setBounds(n),alert(`실시간 경로 계산 완료!\n총 거리: ${(o.data.distance/1e3).toFixed(2)} km`)}}else alert("경로 정보를 가져오는 데 실패했습니다.");showLoading(!1)}).catch(showError)}function updateStartAddress(){let e=document.getElementById("start-address").value;if(!e)return;showLoading(!0,"새 출발지를 설정합니다...");let t=new URLSearchParams({action:"geocodeAddress",address:e});fetch(`${BACKEND_URL}?${t.toString()}`).then(e=>e.json()).then(e=>{if(e.success&&e.data){let t=new kakao.maps.LatLng(e.data.lat,e.data.lng);map.setCenter(t),startMarker.setPosition(t),allDestinations.forEach(a=>{a.distance=Math.round(new kakao.maps.Polyline({path:[t,new kakao.maps.LatLng(a.lat,a.lng)]}).getLength()/10)/100}),currentPolyline&&currentPolyline.setMap(null),applyFilters(),alert("출발지가 성공적으로 변경되었습니다.")}else alert("주소를 좌표로 변환할 수 없습니다.");showLoading(!1)}).catch(showError)}function showLoading(e,t="데이터 로딩 중..."){let a=document.getElementById("loading-overlay");a.querySelector("p").textContent=t,a.style.display=e?"flex":"none"}function showError(e){alert("오류가 발생했습니다: "+e.message),showLoading(!1)}
+    </script>
+</body>
+</html>
